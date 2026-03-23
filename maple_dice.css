@@ -216,7 +216,7 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;back
 ::-webkit-scrollbar{width:4px}::-webkit-scrollbar-track{background:rgba(0,0,0,.3)}
 ::-webkit-scrollbar-thumb{background:linear-gradient(180deg,var(--neon-pink),var(--accent));border-radius:2px}
 
-/* 반응형: 900px 이하에서는 board-grid 전체 너 비, side-col 아래로 */
+/* 반응형: 900px 이하에서는 board-grid 전체 너비, side-col 아래로 */
 @media(max-width:900px){
   .board-grid{width:100%;}
   .side-col{

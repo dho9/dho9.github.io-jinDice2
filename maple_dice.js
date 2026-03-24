@@ -12,46 +12,37 @@ for(let c=0;c<=10;c++)PATH_POS.push([0,c]);
 for(let r=1;r<=9;r++)PATH_POS.push([r,10]);
 const CORNERS=new Set([1,11,21,31]);
 let currentPos=1;
-let passedStart=false; // START를 한 번이라도 통과했는지 여부
-// 주사위 개수 1~3, 각 주사위 값
+let passedStart=false;
 let diceCount=3;
 let chosenDice=[6,5,4];
 let highlightedPath=[];
-
-// 특수 주사위 상태: 각 주사위 인덱스에 적용된 효과
-// null = 특수 없음, 또는 { type: 'x2'|'x3'|'fert'|'minus5'|'minus10'|'xminus3' }
 let specialDiceEffects=[null,null,null];
 
 const SPECIAL_EFFECTS=[
-  {id:'x2',    label:'×2',    desc:'이동칸 ×2',         color:'#ffd84a'},
-  {id:'x3',    label:'×3',    desc:'이동칸 ×3',         color:'#ff9f1c'},
-  {id:'fert',  label:'🌿×2',  desc:'코인 ×2 (성장비료)',color:'#39ff8a'},
-  {id:'m5',    label:'-5',    desc:'이동칸 -5',         color:'#ff4fce'},
-  {id:'m10',   label:'-10',   desc:'이동칸 -10',        color:'#ff4060'},
-  {id:'xm3',   label:'×(-3)',desc:'이동칸 ×(-3)',       color:'#b87aff'},
+  {id:'x2',label:'×2',desc:'이동칸 ×2',color:'#ffd84a'},
+  {id:'x3',label:'×3',desc:'이동칸 ×3',color:'#ff9f1c'},
+  {id:'fert',label:'🌿×2',desc:'코인 ×2 (성장비료)',color:'#39ff8a'},
+  {id:'m5',label:'-5',desc:'이동칸 -5',color:'#ff4fce'},
+  {id:'m10',label:'-10',desc:'이동칸 -10',color:'#ff4060'},
+  {id:'xm3',label:'×(-3)',desc:'이동칸 ×(-3)',color:'#b87aff'},
 ];
 
 function applySpecialToSteps(dice,effectId){
-  // 이동 칸 수 변환
   switch(effectId){
-    case 'x2':   return dice*2;
-    case 'x3':   return dice*3;
-    case 'fert': return dice; // 이동칸은 그대로, 코인만 나중에 2배
-    case 'm5':   return dice-5;
-    case 'm10':  return dice-10;
-    case 'xm3':  return dice*-3;
-    default:     return dice;
+    case 'x2': return dice*2;
+    case 'x3': return dice*3;
+    case 'fert': return dice;
+    case 'm5': return dice-5;
+    case 'm10': return dice-10;
+    case 'xm3': return dice*-3;
+    default: return dice;
   }
 }
 
 function getSpecial(n){return specialCells.find(s=>s.cellNum===n)||null}
 function cellArrow(i){if(i<=11)return'◀';if(i<=20)return'▲';if(i<=31)return'▶';return'▼'}
 
-document.addEventListener('click',e=>{
-  if(!e.target.closest('.help-btn')&&!e.target.closest('.help-popup'))
-    document.querySelector('.help-popup')?.classList.remove('show');
-});
-
+// ── 플레이 보드 ──────────────────────────────────────────
 function renderBoard(){
   const grid=document.getElementById('boardGrid');
   grid.innerHTML='';
@@ -90,23 +81,172 @@ function renderBoard(){
   grid.appendChild(ov);
 }
 
+// ── 설정탭: 보드판 형태 직접 편집 ────────────────────────
+// 팝업 편집기
+let editPopup=null;
+function closeEditPopup(){if(editPopup){editPopup.remove();editPopup=null;}}
+
+function openCellEditor(idx, anchorEl){
+  closeEditPopup();
+  const sp=getSpecial(idx);
+
+  const pop=document.createElement('div');
+  pop.className='cell-edit-popup';
+  editPopup=pop;
+
+  // 현재 타입
+  const curType=sp?sp.type:'coin';
+
+  pop.innerHTML=`
+    <div class="cep-header">
+      <span class="cep-title">${idx}번 칸 설정</span>
+      <button class="cep-close" onclick="closeEditPopup()">✕</button>
+    </div>
+    <div class="cep-types">
+      <button class="cep-type ${curType==='coin'?'active':''}" data-type="coin">💰 코인</button>
+      <button class="cep-type ${curType==='move'&&sp?.moveVal>=0?'active':''}" data-type="plus">▶ +이동</button>
+      <button class="cep-type ${curType==='move'&&sp?.moveVal<0?'active':''}" data-type="minus">◀ -이동</button>
+      <button class="cep-type ${curType==='mystery'?'active':''}" data-type="mystery">? 랜덤</button>
+    </div>
+    <div class="cep-val-wrap" id="cepValWrap"></div>
+    <button class="cep-save" onclick="saveCellEdit(${idx})">✓ 저장</button>
+  `;
+  document.body.appendChild(pop);
+
+  // 타입 버튼
+  pop.querySelectorAll('.cep-type').forEach(btn=>{
+    btn.onclick=()=>{
+      pop.querySelectorAll('.cep-type').forEach(b=>b.classList.remove('active'));
+      btn.classList.add('active');
+      renderCepVal(btn.dataset.type, idx);
+    };
+  });
+  renderCepVal(curType==='move'?(sp.moveVal>=0?'plus':'minus'):curType, idx);
+
+  // 위치 계산
+  const rect=anchorEl.getBoundingClientRect();
+  const scrollY=window.scrollY||window.pageYOffset;
+  let top=rect.bottom+scrollY+4;
+  let left=rect.left+window.scrollX;
+  pop.style.top=top+'px';
+  pop.style.left=left+'px';
+
+  // 화면 밖으로 나가면 보정
+  requestAnimationFrame(()=>{
+    const pr=pop.getBoundingClientRect();
+    if(pr.right>window.innerWidth-8) pop.style.left=(window.innerWidth-pr.width-8)+'px';
+    if(pr.bottom>window.innerHeight-8) pop.style.top=(rect.top+scrollY-pr.height-4)+'px';
+  });
+}
+
+function renderCepVal(type, idx){
+  const wrap=document.getElementById('cepValWrap');
+  if(!wrap)return;
+  const sp=getSpecial(idx);
+  if(type==='coin'){
+    wrap.innerHTML=`<label class="cep-label">코인 값</label><input class="cep-input" id="cepInput" type="number" min="0" step="50" value="${coinVals[idx]||0}">`;
+  } else if(type==='plus'){
+    const v=sp&&sp.type==='move'&&sp.moveVal>0?sp.moveVal:3;
+    wrap.innerHTML=`<label class="cep-label">앞으로 이동 칸 수</label><input class="cep-input" id="cepInput" type="number" min="1" max="20" value="${v}">`;
+  } else if(type==='minus'){
+    const v=sp&&sp.type==='move'&&sp.moveVal<0?Math.abs(sp.moveVal):3;
+    wrap.innerHTML=`<label class="cep-label">뒤로 이동 칸 수</label><input class="cep-input" id="cepInput" type="number" min="1" max="20" value="${v}">`;
+  } else {
+    wrap.innerHTML=`<div style="font-size:11px;color:var(--text3);padding:4px 0">랜덤 효과칸 (? 칸)</div>`;
+  }
+}
+
+function saveCellEdit(idx){
+  const pop=editPopup;
+  if(!pop)return;
+  const activeType=pop.querySelector('.cep-type.active')?.dataset.type;
+  const inp=document.getElementById('cepInput');
+  const val=inp?parseInt(inp.value)||0:0;
+
+  // specialCells에서 제거
+  specialCells=specialCells.filter(s=>s.cellNum!==idx);
+
+  if(activeType==='coin'){
+    coinVals[idx]=val;
+  } else if(activeType==='plus'){
+    specialCells.push({cellNum:idx,type:'move',moveVal:Math.abs(val)||3});
+    coinVals[idx]=0;
+  } else if(activeType==='minus'){
+    specialCells.push({cellNum:idx,type:'move',moveVal:-(Math.abs(val)||3)});
+    coinVals[idx]=0;
+  } else if(activeType==='mystery'){
+    specialCells.push({cellNum:idx,type:'mystery',moveVal:0});
+    coinVals[idx]=0;
+  }
+
+  closeEditPopup();
+  renderQuickBoard();
+  renderBoard();
+  showSave();
+}
+
+// 보드판 형태 그대로 렌더링 (설정탭)
+function renderQuickBoard(){
+  const grid=document.getElementById('quickBoard');
+  if(!grid)return;
+  grid.innerHTML='';
+  const lookup={};
+  for(let i=1;i<=TOTAL;i++){const[r,c]=PATH_POS[i];lookup[`${r},${c}`]=i;}
+
+  for(let r=0;r<ROWS;r++){
+    for(let c=0;c<COLS;c++){
+      const div=document.createElement('div');
+      const idx=lookup[`${r},${c}`];
+      if(idx!==undefined){
+        const sp=getSpecial(idx);
+        const corner=CORNERS.has(idx);
+        let cls='qbc';
+        if(corner)cls+=' corner';
+        if(sp){
+          if(sp.type==='mystery')cls+=' mystery';
+          else cls+=sp.moveVal>=0?' move-plus':' move-minus';
+        }
+        div.className=cls;
+
+        let label='';
+        if(idx===1){label='START';}
+        else if(sp&&sp.type==='mystery'){label='?';}
+        else if(sp&&sp.type==='move'){label=(sp.moveVal>=0?'+':'')+sp.moveVal+'칸';}
+        else{label='+'+coinVals[idx];}
+
+        div.innerHTML=`<span class="qbn">${idx}</span><span class="qbv">${label}</span>`;
+        div.title=`${idx}번 칸 클릭해서 수정`;
+        div.onclick=(e)=>{e.stopPropagation();openCellEditor(idx,div);};
+      } else {
+        div.className=(r===5&&c===5)?'qbc qb-center':'qbc qb-inner';
+        if(r>=4&&r<=6&&c>=4&&c<=6&&!(r===4&&c===4)&&!(r===4&&c===6)&&!(r===6&&c===4)&&!(r===6&&c===6)){
+          div.innerHTML=r===5&&c===5?'💎':'';
+        }
+      }
+      grid.appendChild(div);
+    }
+  }
+}
+
+// 팝업 닫기 (바깥 클릭)
+document.addEventListener('click',e=>{
+  if(editPopup&&!editPopup.contains(e.target)&&!e.target.closest('.qbc'))closeEditPopup();
+});
+
+// ── 주사위 렌더 ──────────────────────────────────────────
 function renderDice(){
   const c=document.getElementById('diceContainer');
   c.innerHTML='';
 
-  // ── START 통과 여부 ──
   const lapRow=document.createElement('div');
   lapRow.style='display:flex;align-items:center;gap:8px;margin-bottom:10px;padding-bottom:10px;border-bottom:1px solid rgba(120,60,255,.2);';
   lapRow.innerHTML=`<span style="font-family:'Jua',sans-serif;font-size:11px;color:var(--text2);white-space:nowrap;">START 통과</span>`;
-  const lapBtnWrap=document.createElement('div');
-  lapBtnWrap.style='display:flex;gap:5px;';
+  const lapBtnWrap=document.createElement('div');lapBtnWrap.style='display:flex;gap:5px;';
   [{val:false,label:'미통과'},{val:true,label:'통과 ✓'}].forEach(({val,label})=>{
     const btn=document.createElement('button');
-    const sel=passedStart===val;
-    const isPass=val===true;
+    const sel=passedStart===val,isPass=val===true;
     btn.style=`padding:5px 12px;border-radius:5px;border:1px solid ${sel?(isPass?'var(--neon-green)':'rgba(200,160,255,.7)'):(isPass?'rgba(0,200,80,.2)':'rgba(80,40,150,.5)')};background:${sel?(isPass?'rgba(0,180,80,.25)':'rgba(100,60,200,.25)'):'rgba(0,0,0,.3)'};color:${sel?(isPass?'var(--neon-green)':'#fff'):'var(--text3)'};font-family:'Jua',sans-serif;font-size:12px;cursor:pointer;transition:all .13s;box-shadow:${sel&&isPass?'0 0 8px rgba(0,255,100,.35)':sel?'0 0 8px rgba(150,100,255,.4)':''};`;
     btn.textContent=label;
-    btn.title=isPass?'START 통과 후 → 이후 통과 시 성장비료 +400':'아직 첫 바퀴 → START 통과해도 보너스 없음';
     btn.onclick=()=>{passedStart=val;renderDice();};
     lapBtnWrap.appendChild(btn);
   });
@@ -117,58 +257,41 @@ function renderDice(){
   lapRow.appendChild(lapHint);
   c.appendChild(lapRow);
 
-  // ── 주사위 개수 선택 ──
   const countRow=document.createElement('div');
   countRow.style='display:flex;align-items:center;gap:8px;margin-bottom:10px;padding-bottom:10px;border-bottom:1px solid rgba(120,60,255,.2);';
   countRow.innerHTML=`<span style="font-family:'Jua',sans-serif;font-size:11px;color:var(--text2);white-space:nowrap;">주사위 개수</span>`;
-  const btnWrap=document.createElement('div');
-  btnWrap.style='display:flex;gap:5px;';
+  const btnWrap=document.createElement('div');btnWrap.style='display:flex;gap:5px;';
   [1,2,3].forEach(n=>{
     const btn=document.createElement('button');
     const sel=diceCount===n;
     btn.style=`padding:5px 14px;border-radius:5px;border:1px solid ${sel?'var(--neon-cyan)':'rgba(80,40,150,.5)'};background:${sel?'rgba(0,160,220,.25)':'rgba(0,0,0,.3)'};color:${sel?'#fff':'var(--text3)'};font-family:'Jua',sans-serif;font-size:12px;cursor:pointer;transition:all .13s;box-shadow:${sel?'0 0 8px rgba(0,200,255,.4)':''};`;
     btn.textContent=`${n}개`;
-    btn.onclick=()=>{
-      diceCount=n;
-      while(chosenDice.length<n) chosenDice.push(1);
-      while(specialDiceEffects.length<n) specialDiceEffects.push(null);
-      renderDice();
-    };
+    btn.onclick=()=>{diceCount=n;while(chosenDice.length<n)chosenDice.push(1);while(specialDiceEffects.length<n)specialDiceEffects.push(null);renderDice();};
     btnWrap.appendChild(btn);
   });
   countRow.appendChild(btnWrap);
   c.appendChild(countRow);
 
-  // ── 주사위 값 선택 (diceCount 개수만큼만) ──
   for(let d=0;d<diceCount;d++){
     const row=document.createElement('div');row.className='dr';row.style='flex-direction:column;gap:4px;align-items:stretch;';
-
-    // 상단: 레이블 + 주사위 선택 + 숫자입력
-    const topRow=document.createElement('div');
-    topRow.style='display:flex;align-items:center;gap:4px;';
+    const topRow=document.createElement('div');topRow.style='display:flex;align-items:center;gap:4px;';
     const lbl=document.createElement('div');lbl.className='dlabel';lbl.textContent=`주사위 ${d+1}`;topRow.appendChild(lbl);
     const opts=document.createElement('div');opts.className='dopts';
     for(let v=1;v<=6;v++){
       const btn=document.createElement('button');
       btn.className='dbtn'+(chosenDice[d]===v?' sel':'');
-      btn.innerHTML=diceSvg(v);
-      btn.title=`${v}`;
+      btn.innerHTML=diceSvg(v);btn.title=`${v}`;
       btn.onclick=()=>{chosenDice[d]=v;renderDice()};
       opts.appendChild(btn);
     }
     topRow.appendChild(opts);
     const numIn=document.createElement('input');
     numIn.type='number';numIn.className='dnum';numIn.min=1;numIn.max=6;numIn.value=chosenDice[d];
-    numIn.oninput=()=>{
-      const v=Math.max(1,Math.min(6,parseInt(numIn.value)||1));
-      chosenDice[d]=v;
-      topRow.querySelectorAll('.dbtn').forEach((b,i)=>b.classList.toggle('sel',i+1===v));
-    };
+    numIn.oninput=()=>{const v=Math.max(1,Math.min(6,parseInt(numIn.value)||1));chosenDice[d]=v;topRow.querySelectorAll('.dbtn').forEach((b,i)=>b.classList.toggle('sel',i+1===v));};
     numIn.onblur=()=>{numIn.value=chosenDice[d]};
     topRow.appendChild(numIn);
     row.appendChild(topRow);
 
-    // 하단: 특수 주사위 효과 선택 버튼들
     const specRow=document.createElement('div');
     specRow.style='display:flex;align-items:center;gap:3px;flex-wrap:wrap;padding:4px 0 6px 0;border-bottom:1px solid rgba(120,60,255,.15);';
     const specLabel=document.createElement('span');
@@ -176,7 +299,6 @@ function renderDice(){
     specLabel.textContent='특수효과';
     specRow.appendChild(specLabel);
 
-    // "없음" 버튼
     const noneBtn=document.createElement('button');
     const noneActive=!specialDiceEffects[d];
     noneBtn.style=`padding:2px 6px;border-radius:4px;border:1px solid ${noneActive?'var(--neon-cyan)':'rgba(80,40,150,.4)'};background:${noneActive?'rgba(0,160,220,.2)':'rgba(0,0,0,.3)'};color:${noneActive?'#fff':'var(--text3)'};font-size:9px;cursor:pointer;font-family:"Jua",sans-serif;transition:all .13s;`;
@@ -187,55 +309,40 @@ function renderDice(){
     SPECIAL_EFFECTS.forEach(eff=>{
       const effBtn=document.createElement('button');
       const isActive=specialDiceEffects[d]===eff.id;
-      effBtn.style=`padding:2px 6px;border-radius:4px;border:1px solid ${isActive?eff.color:'rgba(80,40,150,.4)'};background:${isActive?`rgba(80,40,150,.35)`:'rgba(0,0,0,.3)'};color:${isActive?eff.color:'var(--text3)'};font-size:9px;cursor:pointer;font-family:"Jua",sans-serif;transition:all .13s;${isActive?`box-shadow:0 0 6px ${eff.color}44;`:''}`;
-      effBtn.textContent=eff.label;
-      effBtn.title=eff.desc;
+      effBtn.style=`padding:2px 6px;border-radius:4px;border:1px solid ${isActive?eff.color:'rgba(80,40,150,.4)'};background:${isActive?'rgba(80,40,150,.35)':'rgba(0,0,0,.3)'};color:${isActive?eff.color:'var(--text3)'};font-size:9px;cursor:pointer;font-family:"Jua",sans-serif;transition:all .13s;${isActive?`box-shadow:0 0 6px ${eff.color}44;`:''}`;
+      effBtn.textContent=eff.label;effBtn.title=eff.desc;
       effBtn.onclick=()=>{specialDiceEffects[d]=eff.id;renderDice();};
       specRow.appendChild(effBtn);
     });
 
-    // 현재 적용 효과 표시
     if(specialDiceEffects[d]){
       const eff=SPECIAL_EFFECTS.find(e=>e.id===specialDiceEffects[d]);
-      const raw=chosenDice[d];
-      const finalSteps=applySpecialToSteps(raw,eff.id);
+      const finalSteps=applySpecialToSteps(chosenDice[d],eff.id);
       const tag=document.createElement('span');
       tag.style=`font-size:9px;color:${eff.color};margin-left:2px;font-family:"Jua",sans-serif;`;
       tag.textContent=`→ ${finalSteps}칸${eff.id==='fert'?' (코인×2)':''}`;
       specRow.appendChild(tag);
     }
-
     row.appendChild(specRow);
     c.appendChild(row);
   }
 }
 
-function renderCellEdit(){
-  const grid=document.getElementById('cellEditGrid');grid.innerHTML='';
-  for(let i=1;i<=TOTAL;i++){
-    const sp=getSpecial(i);
-    const div=document.createElement('div');div.className='ced';
-    const lbl=document.createElement('span');lbl.className='cel';lbl.textContent=i===1?'START':`${i}번`;div.appendChild(lbl);
-    if(sp){
-      const badge=document.createElement('span');
-      if(sp.type==='mystery'){badge.style='display:flex;align-items:center;justify-content:center;font-size:11px;padding:3px 0;border-radius:5px;background:rgba(255,144,64,.1);border:1px solid rgba(255,144,64,.4);color:var(--orange)';badge.textContent='?';}
-      else{badge.style=`display:flex;align-items:center;justify-content:center;font-size:8px;padding:3px 1px;border-radius:5px;background:${sp.moveVal>=0?'rgba(80,216,255,.1)':'rgba(240,96,112,.1)'};border:1px solid ${sp.moveVal>=0?'rgba(80,216,255,.4)':'rgba(240,96,112,.4)'};color:${sp.moveVal>=0?'var(--cyan)':'var(--red)'}`;badge.textContent=(sp.moveVal>=0?'+':'')+sp.moveVal+'칸';}
-      div.appendChild(badge);
-    }else{
-      const inp=document.createElement('input');inp.type='number';inp.className='cei';inp.value=coinVals[i];
-      inp.onchange=()=>{coinVals[i]=parseInt(inp.value)||0;renderBoard();showSave()};
-      div.appendChild(inp);
-    }
-    grid.appendChild(div);
-  }
-}
-
+// ── 특수칸 리스트 (설정탭 하단) ──────────────────────────
 function renderSpecialList(){
-  const list=document.getElementById('specialList');list.innerHTML='';
+  const list=document.getElementById('specialList');
+  if(!list)return;
+  list.innerHTML='';
+  if(specialCells.length===0){
+    list.innerHTML=`<div style="font-size:11px;color:var(--text3);text-align:center;padding:12px">특수 칸이 없습니다. 위 보드판에서 칸을 클릭해 추가하거나 아래 버튼을 이용하세요.</div>`;
+    return;
+  }
   specialCells.forEach((sp,idx)=>{
     const item=document.createElement('div');item.className='special-item';
+
     const hdr=document.createElement('div');hdr.className='special-item-header';
-    const title=document.createElement('span');title.className='special-item-title';title.textContent=`특수 칸 #${idx+1}`;hdr.appendChild(title);
+    const title=document.createElement('span');title.className='special-item-title';
+    title.textContent=`${sp.cellNum}번 칸`;hdr.appendChild(title);
     const badge=document.createElement('span');badge.className='special-badge';
     const updateBadge=()=>{
       if(sp.type==='mystery'){badge.className='special-badge badge-mystery';badge.textContent='? 랜덤';}
@@ -243,25 +350,43 @@ function renderSpecialList(){
       else{badge.className='special-badge badge-move-minus';badge.textContent=`${sp.moveVal}칸 이동`;}
     };
     updateBadge();hdr.appendChild(badge);item.appendChild(hdr);
+
     const row1=document.createElement('div');row1.className='special-row';
+
+    // 칸번호
     const nl=document.createElement('span');nl.className='special-label';nl.textContent='칸 번호';row1.appendChild(nl);
     const ni=document.createElement('input');ni.type='number';ni.className='special-input';ni.min=1;ni.max=TOTAL;ni.value=sp.cellNum;
-    ni.onchange=()=>{sp.cellNum=Math.max(1,Math.min(TOTAL,parseInt(ni.value)||1));ni.value=sp.cellNum;renderBoard();renderCellEdit();showSave()};
+    ni.onchange=()=>{
+      sp.cellNum=Math.max(1,Math.min(TOTAL,parseInt(ni.value)||1));
+      ni.value=sp.cellNum;
+      title.textContent=`${sp.cellNum}번 칸`;
+      renderBoard();renderQuickBoard();showSave();
+    };
     row1.appendChild(ni);
+
+    // 타입 버튼
     const tbtns=document.createElement('div');tbtns.className='type-btns';
-    const mkType=(label,cls,check,action)=>{const b=document.createElement('button');b.className='type-btn'+(check()?` ${cls}`:'');b.textContent=label;b.onclick=()=>{action();updateBadge();renderSpecialList();renderBoard();renderCellEdit();showSave()};tbtns.appendChild(b);};
-    mkType('+이동','ap',()=>sp.type==='move'&&sp.moveVal>=0,()=>{sp.type='move';if(sp.moveVal<0)sp.moveVal=3});
-    mkType('-이동','am',()=>sp.type==='move'&&sp.moveVal<0,()=>{sp.type='move';if(sp.moveVal>=0)sp.moveVal=-3});
-    mkType('?','aq',()=>sp.type==='mystery',()=>{sp.type='mystery';sp.moveVal=0});
+    const mkType=(label,cls,check,action)=>{
+      const b=document.createElement('button');
+      b.className='type-btn'+(check()?` ${cls}`:'');
+      b.textContent=label;
+      b.onclick=()=>{action();updateBadge();renderBoard();renderQuickBoard();renderSpecialList();showSave();};
+      tbtns.appendChild(b);
+    };
+    mkType('+이동','ap',()=>sp.type==='move'&&sp.moveVal>=0,()=>{sp.type='move';if(sp.moveVal<=0)sp.moveVal=3;});
+    mkType('-이동','am',()=>sp.type==='move'&&sp.moveVal<0,()=>{sp.type='move';if(sp.moveVal>=0)sp.moveVal=-3;});
+    mkType('?','aq',()=>sp.type==='mystery',()=>{sp.type='mystery';sp.moveVal=0;});
     row1.appendChild(tbtns);
+
     const del=document.createElement('button');del.className='del-btn';del.innerHTML='×';
-    del.onclick=()=>{specialCells.splice(idx,1);renderSpecialList();renderBoard();renderCellEdit();showSave()};
+    del.onclick=()=>{specialCells.splice(idx,1);renderSpecialList();renderBoard();renderQuickBoard();showSave();};
     row1.appendChild(del);item.appendChild(row1);
+
     if(sp.type==='move'){
       const row2=document.createElement('div');row2.className='special-row';
       const vl=document.createElement('span');vl.className='special-label';vl.textContent='이동 칸 수';row2.appendChild(vl);
       const vi=document.createElement('input');vi.type='number';vi.className='special-input';vi.value=sp.moveVal;
-      vi.onchange=()=>{sp.moveVal=parseInt(vi.value)||0;vi.value=sp.moveVal;updateBadge();renderBoard();renderCellEdit();showSave()};
+      vi.onchange=()=>{sp.moveVal=parseInt(vi.value)||0;updateBadge();renderBoard();renderQuickBoard();showSave();};
       row2.appendChild(vi);
       const hint=document.createElement('span');hint.style='font-size:9px;color:var(--text3)';hint.textContent='(+앞 / -뒤)';row2.appendChild(hint);
       item.appendChild(row2);
@@ -270,33 +395,37 @@ function renderSpecialList(){
   });
 }
 
-function addSpecialCell(){specialCells.push({cellNum:1,type:'move',moveVal:3});renderSpecialList();renderCellEdit()}
-function showSave(){const n=document.getElementById('saveNotice');n.classList.add('show');clearTimeout(n._t);n._t=setTimeout(()=>n.classList.remove('show'),1500)}
+function addSpecialCell(){
+  specialCells.push({cellNum:2,type:'move',moveVal:3});
+  renderSpecialList();renderQuickBoard();renderBoard();
+}
+
+function showSave(){
+  const n=document.getElementById('saveNotice');
+  if(!n)return;
+  n.classList.add('show');clearTimeout(n._t);n._t=setTimeout(()=>n.classList.remove('show'),1500);
+}
 
 function switchTab(name){
   document.querySelectorAll('.tab').forEach((t,i)=>t.classList.toggle('active',['play','settings'][i]===name));
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
   document.getElementById('tab-'+name).classList.add('active');
-  if(name==='settings'){renderCellEdit();renderSpecialList()}
+  if(name==='settings'){renderQuickBoard();renderSpecialList();}
 }
 
+// ── 계산 로직 ─────────────────────────────────────────────
 function permutations(arr){
   if(arr.length<=1)return[[...arr]];
   const res=[];
-  for(let i=0;i<arr.length;i++){const rest=[...arr.slice(0,i),...arr.slice(i+1)];for(const p of permutations(rest))res.push([arr[i],...p])}
+  for(let i=0;i<arr.length;i++){const rest=[...arr.slice(0,i),...arr.slice(i+1)];for(const p of permutations(rest))res.push([arr[i],...p]);}
   return res;
 }
 
-function stepForward(pos,steps){
-  return((pos-1+steps)%TOTAL+TOTAL)%TOTAL+1;
-}
+function stepForward(pos,steps){return((pos-1+steps)%TOTAL+TOTAL)%TOTAL+1;}
 
 function didPassOrLandStart(from,steps){
   if(steps<=0)return false;
-  // 통과 또는 착지 둘 다 체크 (i=1부터 steps까지 포함)
-  for(let i=1;i<=steps;i++){
-    if(((from-1+i)%TOTAL)+1===1)return true;
-  }
+  for(let i=1;i<=steps;i++){if(((from-1+i)%TOTAL)+1===1)return true;}
   return false;
 }
 
@@ -310,14 +439,13 @@ function simulate(start,order,effects,alreadyPassedStart){
     const effId=effects?effects[i]:null;
     const isFert=effId==='fert';
     const d=applySpecialToSteps(rawDice,effId);
-
     const landed=stepForward(pos,d);
 
     let passBonus=0;
     const crossesStart=d>0&&didPassOrLandStart(pos,d);
     if(crossesStart){
-      if(hasPassedStart) passBonus=coinVals[1]; // 이미 첫 통과 했으면 보너스
-      hasPassedStart=true; // 이번에 통과했으니 이후부터 보너스 활성화
+      if(hasPassedStart)passBonus=coinVals[1];
+      hasPassedStart=true;
     }
 
     const sp=getSpecial(landed);
@@ -360,8 +488,6 @@ function simulate(start,order,effects,alreadyPassedStart){
 function calculate(){
   const activeDice=chosenDice.slice(0,diceCount);
   const activeEffects=specialDiceEffects.slice(0,diceCount);
-
-  // 주사위 인덱스 배열로 순열 생성 (값이 같아도 효과가 다를 수 있으므로 인덱스 기준)
   const indices=[...Array(diceCount).keys()];
   const idxPerms=permutations(indices);
   const seen=new Set();
@@ -370,7 +496,6 @@ function calculate(){
   for(const perm of idxPerms){
     const orderVals=perm.map(i=>activeDice[i]);
     const orderEffs=perm.map(i=>activeEffects[i]);
-    // 같은 값+효과 조합 중복 제거
     const key=perm.map(i=>`${activeDice[i]}:${activeEffects[i]||''}`).join(',');
     if(seen.has(key))continue;
     seen.add(key);
@@ -397,15 +522,13 @@ function displayResults(results){
   sec.classList.add('visible','pop');setTimeout(()=>sec.classList.remove('pop'),400);
 
   const best=results[0];
-
-  // 최적 순서 표시 (특수 효과 포함)
   document.getElementById('bestCoin').textContent=(best.coins>=0?'+':'')+best.coins.toLocaleString()+' 코인';
   document.getElementById('bestOrder').innerHTML=best.order.map((d,j)=>{
     const eff=best.effects&&best.effects[j]?SPECIAL_EFFECTS.find(e=>e.id===best.effects[j]):null;
     const steps=best.pathDetails[j].actualSteps;
     const effTag=eff?`<span style="font-size:8px;color:${eff.color};border:1px solid ${eff.color}44;border-radius:3px;padding:0 2px;margin-left:1px;">${eff.label}</span>`:'';
     const stepTag=eff?`<span style="font-size:8px;color:var(--text3);">(${steps}칸)</span>`:'';
-    return `<span style="display:inline-flex;align-items:center;vertical-align:middle;color:var(--gold)">${diceSvg(d,16)}</span>${effTag}${stepTag}${j<best.order.length-1?'<span style="font-size:10px;color:var(--text3);margin:0 1px">→</span>':''}`;
+    return`<span style="display:inline-flex;align-items:center;vertical-align:middle;color:var(--gold)">${diceSvg(d,16)}</span>${effTag}${stepTag}${j<best.order.length-1?'<span style="font-size:10px;color:var(--text3);margin:0 1px">→</span>':''}`;
   }).join('');
   document.getElementById('bestPos').textContent=best.pos+'번 칸';
   document.getElementById('totalCases').textContent=results.length+'가지';
@@ -418,7 +541,7 @@ function displayResults(results){
       const eff=r.effects&&r.effects[di]?SPECIAL_EFFECTS.find(e=>e.id===r.effects[di]):null;
       const effLabel=eff?`[✦${eff.label}→${d.actualSteps}칸]`:'';
       let s='';
-      if(d.moveBlocked) s=`${d.dest}번(🔒+${d.isFert?200:100})`;
+      if(d.moveBlocked)s=`${d.dest}번(🔒+${d.isFert?200:100})`;
       else if(d.teleFrom!==null){const sp=getSpecial(d.teleFrom);const sign=sp.moveVal>=0?'+':'';s=`${d.teleFrom}번(${sign}${sp.moveVal}칸)→${d.dest}번(+${d.isFert?(coinVals[d.dest]||0)*2:(coinVals[d.dest]||0)})${d.isFert?'×2':''}`;} 
       else{const sp=getSpecial(d.dest);s=sp&&sp.type==='mystery'?`${d.dest}번(?)`:`${d.dest}번(+${d.isFert?(coinVals[d.dest]||0)*2:(coinVals[d.dest]||0)})${d.isFert?'×2':''}`;}
       if(d.passBonus>0)s+=`[★+${d.passBonus}]`;
@@ -432,7 +555,7 @@ function displayResults(results){
           ${r.order.map((d,j)=>{
             const eff=r.effects&&r.effects[j]?SPECIAL_EFFECTS.find(e=>e.id===r.effects[j]):null;
             const effTag=eff?`<span style="font-size:8px;color:${eff.color};border:1px solid ${eff.color}55;border-radius:3px;padding:0 2px;">${eff.label}</span>`:'';
-            return `<span style="display:inline-flex;align-items:center;vertical-align:middle;color:var(--gold)">${diceSvg(d,16)}</span>${effTag}${j<r.order.length-1?'<span class="rarr">▶</span>':''}`;
+            return`<span style="display:inline-flex;align-items:center;vertical-align:middle;color:var(--gold)">${diceSvg(d,16)}</span>${effTag}${j<r.order.length-1?'<span class="rarr">▶</span>':''}`;
           }).join('')}
           <span style="font-size:9px;color:var(--text3);margin-left:3px">(${r.order.join('-')})</span>
         </div>

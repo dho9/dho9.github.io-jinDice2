@@ -34,7 +34,7 @@
           <div class="help-step">
             <div class="help-num">3</div>
             <div class="help-text">
-              보드 설정 탭을 클릭하면 각 칸의 코인 보상을 수정할 수 있으며, 특수 칸 설정도 변경할 수 있습니다.
+              보드 설정 탭에서 보드판 모양 그대로 칸을 클릭해 코인값을 수정하고, 우클릭으로 특수칸을 설정할 수 있습니다.
             </div>
           </div>
           <div class="help-step">
@@ -141,14 +141,24 @@
 
   <!-- SETTINGS TAB -->
   <div id="tab-settings" class="page">
+
+    <!-- 보드판 형태 직접 입력 -->
     <div class="section" style="margin:12px">
       <div class="sh">
-        <div class="si">💰</div>
-        <div class="st">칸별 코인 보상 수정</div>
+        <div class="si">🗺️</div>
+        <div class="st">보드판 직접 입력</div>
       </div>
-      <div class="notice">각 칸의 코인 보상을 수정하세요. 특수 칸은 아래에서 설정합니다.</div>
-      <div class="cell-edit-grid" id="cellEditGrid"></div>
+      <div class="notice">보드판 모양 그대로 칸을 클릭해서 수정하세요. 우클릭하면 일반칸↔특수칸을 전환할 수 있습니다.</div>
+      <div class="qb-legend">
+        <span class="ql ql-coin">💰 코인칸</span>
+        <span class="ql ql-plus">▶ +이동</span>
+        <span class="ql ql-minus">◀ -이동</span>
+        <span class="ql ql-myst">? 랜덤</span>
+        <span style="font-size:10px;color:var(--text3)">좌클릭: 값수정 / 우클릭: 종류변경</span>
+      </div>
+      <div class="quick-board" id="quickBoard"></div>
     </div>
+
     <div class="section" style="margin:12px">
       <div class="sh">
         <div class="si">✨</div>
